@@ -3,9 +3,14 @@ name = "grcrs"
 version = "1.13.0"
 edition = "2021"
 description = "Generic Colouriser — a faithful Rust port of grc"
-license = "GPL-2.0-or-later"
 repository = "https://github.com/MenkeTechnologies/grcrs"
 readme = "README.md"
+license = "MIT"
+authors = ["MenkeTechnologies <linux.dev25@gmail.com>"]
+homepage = "https://menketechnologies.github.io/grcrs/"
+documentation = "https://docs.rs/grcrs"
+keywords = ["terminal", "unix"]
+categories = ["command-line-utilities"]
 
 exclude = [
     "/tests/",

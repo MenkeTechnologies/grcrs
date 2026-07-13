@@ -10,7 +10,7 @@
 [![CI](https://github.com/MenkeTechnologies/grcrs/actions/workflows/ci.yml/badge.svg)](https://github.com/MenkeTechnologies/grcrs/actions/workflows/ci.yml)
 [![Release](https://github.com/MenkeTechnologies/grcrs/actions/workflows/release.yml/badge.svg)](https://github.com/MenkeTechnologies/grcrs/actions/workflows/release.yml)
  [![Docs](https://img.shields.io/badge/docs-online-05d9e8.svg)](https://menketechnologies.github.io/grcrs/)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
 
 ### `[GENERIC COLOURISER // ANSI STREAM PAINTER // REGEXP-DRIVEN // RUST CORE]`
 
