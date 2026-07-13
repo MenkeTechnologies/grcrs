@@ -168,6 +168,127 @@ fn grc_wrapper_pipes_command_through_grcat() {
 }
 
 #[test]
+fn count_block_halts_subsequent_patterns() {
+    // A `count=block` match must stop later patterns on the same line (as if
+    // count=stop). Without that, the second pattern's `skip=yes` would fire and
+    // suppress the line entirely — the reference grcat prints it.
+    let conf = "regexp=START\ncolours=red\ncount=block\n\
+                ======\nregexp=.\nskip=yes\ncolours=blue\n";
+    assert_eq!(grcat(conf, "START here\n"), "\x1b[31mSTART here\x1b[0m\n");
+}
+
+#[test]
+fn count_once_colours_only_first_match() {
+    let out = grcat("regexp=o\ncolours=red\ncount=once\n", "o o o\n");
+    assert_eq!(out, "\x1b[0m\x1b[31mo\x1b[0m o o\x1b[0m\n");
+}
+
+#[test]
+fn count_more_colours_every_match() {
+    // `count=more` (the default) re-scans from the end of each match.
+    let out = grcat("regexp=o\ncolours=red\ncount=more\n", "o o o\n");
+    assert_eq!(
+        out,
+        "\x1b[0m\x1b[31mo\x1b[0m \x1b[0m\x1b[31mo\x1b[0m \x1b[0m\x1b[31mo\x1b[0m\n"
+    );
+}
+
+#[test]
+fn extra_groups_reuse_first_colour() {
+    // Three capture groups, one colour: groups past the list reuse colour 0.
+    let out = grcat("regexp=(a)(b)(c)\ncolours=red\n", "abc\n");
+    assert_eq!(out, "\x1b[0m\x1b[31mabc\x1b[0m\n");
+}
+
+#[test]
+fn us_colour_spelling_accepted_end_to_end() {
+    let out = grcat("regexp=hi\ncolor=green\n", "hi there\n");
+    assert_eq!(out, "\x1b[0m\x1b[32mhi\x1b[0m there\x1b[0m\n");
+}
+
+#[test]
+fn multibyte_line_colours_correct_char_span() {
+    // 'é' is two UTF-8 bytes; colour spans must land on char boundaries so each
+    // 'é' is wrapped individually with the surrounding ASCII left plain.
+    let out = grcat("regexp=é\ncolours=red\n", "aébé\n");
+    assert_eq!(
+        out,
+        "\x1b[0ma\x1b[0m\x1b[31mé\x1b[0mb\x1b[0m\x1b[31mé\x1b[0m\n"
+    );
+}
+
+#[test]
+fn previous_colour_reuses_prior_group_colour() {
+    // Group 2 uses `previous`; the earlier red group already set prevcolour to
+    // red within this line, so 'b' is coloured red too.
+    let out = grcat("regexp=(a)(b)\ncolours=red,previous\n", "ab\n");
+    assert_eq!(out, "\x1b[0m\x1b[31mab\x1b[0m\n");
+}
+
+#[test]
+fn crlf_only_strips_the_newline() {
+    // grcat drops a single trailing newline; a bare '\r' survives in the output.
+    let out = grcat("regexp=foo\ncolours=red\n", "foo\r\n");
+    assert_eq!(out, "\x1b[0m\x1b[31mfoo\x1b[0m\r\x1b[0m\n");
+}
+
+#[test]
+fn concat_appends_only_matching_lines_uncoloured() {
+    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let sink =
+        std::env::temp_dir().join(format!("grcrs_concat_{}_{}.txt", std::process::id(), n));
+    std::fs::remove_file(&sink).ok();
+    let conf = format!("regexp=keep\nconcat={}\ncolours=red\n", sink.display());
+    grcat(&conf, "keep one\ndrop\nkeep two\n");
+    let written = std::fs::read_to_string(&sink).unwrap();
+    std::fs::remove_file(&sink).ok();
+    // Only the matching lines are concatenated, and without colour escapes.
+    assert_eq!(written, "keep one\nkeep two\n");
+}
+
+#[test]
+fn grc_colour_off_runs_command_plain() {
+    let path = write_conf("regexp=foo\ncolours=red\n");
+    let out = Command::new(env!("CARGO_BIN_EXE_grc"))
+        .arg("-c")
+        .arg(&path)
+        .arg("--colour=off")
+        .arg("sh")
+        .arg("-c")
+        .arg("printf 'a foo b\\n'")
+        .stdout(Stdio::piped())
+        .output()
+        .unwrap();
+    std::fs::remove_file(&path).ok();
+    // No grcat in the pipeline: output is the command's bytes verbatim.
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), "a foo b\n");
+}
+
+#[test]
+fn grc_stderr_redirect_colours_stderr() {
+    // `-e` colours stderr and leaves stdout unredirected.
+    let path = write_conf("regexp=foo\ncolours=red\n");
+    let out = Command::new(env!("CARGO_BIN_EXE_grc"))
+        .arg("-c")
+        .arg(&path)
+        .arg("-e")
+        .arg("--colour=on")
+        .arg("sh")
+        .arg("-c")
+        .arg("printf 'a foo b\\n' >&2")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    std::fs::remove_file(&path).ok();
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
+    assert_eq!(
+        String::from_utf8(out.stderr).unwrap(),
+        "\x1b[0ma \x1b[0m\x1b[31mfoo\x1b[0m b\x1b[0m\n"
+    );
+}
+
+#[test]
 fn grc_propagates_exit_status() {
     let path = write_conf("regexp=x\ncolours=red\n");
     let status = Command::new(env!("CARGO_BIN_EXE_grc"))

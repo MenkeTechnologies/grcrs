@@ -162,7 +162,7 @@ Both binaries resolve their config the same way grc 1.13 does, in this order:
  └──────────────────────────────────────────────────────────┘
 ```
 
-- `grc` joins the command + args into one string and scans `grc.conf` top to bottom. Each non-comment, non-blank line is a Python-`re` regexp; the **next** line names the grcat colourfile to use on a match.
+- `grc` joins the command + args into one string and scans `grc.conf` top to bottom. Each non-comment, non-blank line is a Python-`re` regexp; the **next** line names the grcat colourfile to use on a match. Within one file the first matching regexp wins; across the search path every file is scanned, so a later (higher-precedence) file's match overrides an earlier one — matching grc, user config beats system config.
 - Python `\<` / `\>` (literal `<` / `>` in Python's `re`) are translated to literals so configs authored for grc behave identically under `fancy-regex`.
 - On a match with colour enabled, `grc` runs the command and pipes its output through `grcat <colourfile>`; otherwise the command runs uncoloured with inherited stdio.
 - `SIGINT` is ignored in the wrapper so Ctrl-C reaches the child, and `grc` still reaps and reports the child's exit status.
@@ -193,7 +193,7 @@ The bundled `vendor/grc` submodule ships **83 colourfiles** (`conf.ant` … `con
 
 Pushes to `main` and pull requests run [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc -D warnings`, and a build + test on both `ubuntu-latest` and `macos-latest`, plus a binary smoke test. You can also run it manually from the repository **Actions** tab (**workflow dispatch**).
 
-The suite is **31 tests** — 7 launcher unit tests in `src/grcrs.rs` (option parsing, regexp translation, `grc.conf` matching), 11 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing), and 13 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output.
+The suite is **61 tests** — 15 launcher unit tests in `src/grcrs.rs` (option parsing, regexp translation, `grc.conf` matching and precedence), 22 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing), and 24 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output. End-to-end expectations were cross-checked byte-for-byte against the reference Python `grcat`.
 
 The two binaries build from `src/grcrs.rs` (`grc`, the launcher) and `src/grcatrs.rs` (`grcat`, the colouriser). The release profile uses LTO + `codegen-units = 1`.
 

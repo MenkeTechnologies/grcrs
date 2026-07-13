@@ -117,10 +117,9 @@ fn take_value(argv: &[String], i: &mut usize) -> String {
     }
 }
 
-/// Search the grc.conf files for a regexp matching the command line and return
-/// the associated grcat config name, or empty if none matched.
-fn find_config(args: &[String]) -> String {
-    let cmdline = args.join(" ");
+/// Ordered list of grc.conf files, lowest to highest precedence — mirroring
+/// grc's `conffilenames` scan order.
+fn conffile_list() -> Vec<PathBuf> {
     let home = env::var("HOME").ok();
     let mut xdg = env::var("XDG_CONFIG_HOME").ok();
     if xdg.is_none() {
@@ -130,46 +129,61 @@ fn find_config(args: &[String]) -> String {
     }
 
     let mut conffiles = vec![
-        "/etc/grc.conf".to_string(),
-        "/usr/local/etc/grc.conf".to_string(),
-        "/opt/homebrew/etc/grc.conf".to_string(),
+        PathBuf::from("/etc/grc.conf"),
+        PathBuf::from("/usr/local/etc/grc.conf"),
+        PathBuf::from("/opt/homebrew/etc/grc.conf"),
     ];
     if let Some(x) = xdg {
-        conffiles.push(format!("{}/grc/grc.conf", x));
+        conffiles.push(PathBuf::from(format!("{}/grc/grc.conf", x)));
     }
     if let Some(h) = &home {
-        conffiles.push(format!("{}/.grc/grc.conf", h));
+        conffiles.push(PathBuf::from(format!("{}/.grc/grc.conf", h)));
     }
+    conffiles
+}
 
-    for conffile in conffiles {
-        let path = PathBuf::from(&conffile);
+/// Scan one grc.conf's text for the first regexp matching `cmdline`. Returns the
+/// following line (the grcat config name) on a match, `None` otherwise. Each
+/// non-comment, non-blank line is a candidate regexp, exactly as grc reads them.
+fn scan_conf_for_cfile(text: &str, cmdline: &str) -> Option<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut idx = 0;
+    while idx < lines.len() {
+        let l = lines[idx];
+        idx += 1;
+        if l.starts_with('#') || l.is_empty() {
+            continue;
+        }
+        let regexp = translate_regex(l.trim());
+        if let Ok(re) = Regex::new(&regexp) {
+            if re.is_match(cmdline).unwrap_or(false) {
+                // The next line names the grcat config file.
+                return Some(lines.get(idx).map(|s| s.trim().to_string()).unwrap_or_default());
+            }
+        }
+    }
+    None
+}
+
+/// Search the grc.conf files for a regexp matching the command line and return
+/// the associated grcat config name, or empty if none matched. grc keeps
+/// scanning every file, so a later (higher-precedence) file's match overrides an
+/// earlier one — the last match wins, not the first.
+fn find_config(args: &[String]) -> String {
+    let cmdline = args.join(" ");
+    let mut cfile = String::new();
+    for path in conffile_list() {
         if !path.exists() || path.is_dir() {
             continue;
         }
         let Ok(text) = fs::read_to_string(&path) else {
             continue;
         };
-        let lines: Vec<&str> = text.lines().collect();
-        let mut idx = 0;
-        while idx < lines.len() {
-            let l = lines[idx];
-            idx += 1;
-            if l.starts_with('#') || l.is_empty() {
-                continue;
-            }
-            let regexp = translate_regex(l.trim());
-            if let Ok(re) = Regex::new(&regexp) {
-                if re.is_match(&cmdline).unwrap_or(false) {
-                    // The next line names the grcat config file.
-                    if idx < lines.len() {
-                        return lines[idx].trim().to_string();
-                    }
-                    return String::new();
-                }
-            }
+        if let Some(cf) = scan_conf_for_cfile(&text, &cmdline) {
+            cfile = cf;
         }
     }
-    String::new()
+    cfile
 }
 
 /// Translate Python-`re` regexp source to fancy-regex dialect (literal `\<`/`\>`).
@@ -437,5 +451,76 @@ mod tests {
     fn translate_regex_matches_grcat_behaviour() {
         assert_eq!(translate_regex(r"^\>(.*)"), "^>(.*)");
         assert_eq!(translate_regex(r"\d+"), r"\d+");
+    }
+
+    #[test]
+    fn parse_opts_stdout_override_after_stderr() {
+        // `-e` alone means stderr-only; adding `-s` re-enables stdout.
+        let e = parse_opts(&s(&["-e", "cmd"]));
+        assert!(e.stderrf && !e.stdoutf);
+        let se = parse_opts(&s(&["-e", "-s", "cmd"]));
+        assert!(se.stderrf && se.stdoutf);
+    }
+
+    #[test]
+    fn parse_opts_colour_auto_matches_isatty() {
+        // In the test harness stdout is not a tty, so auto resolves to off.
+        let o = parse_opts(&s(&["--colour=auto", "cmd"]));
+        assert_eq!(o.colour, unsafe { libc::isatty(1) == 1 });
+    }
+
+    #[test]
+    fn scan_conf_returns_line_after_matching_regexp() {
+        let conf = "# header\n^ls\nconf.ls\n^df\nconf.df\n";
+        assert_eq!(scan_conf_for_cfile(conf, "df -h").as_deref(), Some("conf.df"));
+        assert_eq!(scan_conf_for_cfile(conf, "ls -l").as_deref(), Some("conf.ls"));
+    }
+
+    #[test]
+    fn scan_conf_no_match_is_none() {
+        let conf = "^ls\nconf.ls\n";
+        assert_eq!(scan_conf_for_cfile(conf, "docker ps"), None);
+    }
+
+    #[test]
+    fn scan_conf_match_at_eof_yields_empty_name() {
+        // A trailing regexp with no following line names an empty config.
+        let conf = "^ping";
+        assert_eq!(scan_conf_for_cfile(conf, "ping host").as_deref(), Some(""));
+    }
+
+    #[test]
+    fn scan_conf_first_match_within_file_wins() {
+        // Both regexps match; grc breaks on the first within a single file.
+        let conf = "cat\nconf.first\ncat\nconf.second\n";
+        assert_eq!(
+            scan_conf_for_cfile(conf, "cat file").as_deref(),
+            Some("conf.first")
+        );
+    }
+
+    #[test]
+    fn scan_conf_honours_word_boundary_translation() {
+        // `\>` is a literal '>' (grcat dialect), not a word boundary.
+        let conf = "^\\>ls\nconf.redir\n";
+        assert_eq!(
+            scan_conf_for_cfile(conf, ">ls something").as_deref(),
+            Some("conf.redir")
+        );
+        assert_eq!(scan_conf_for_cfile(conf, "ls plain"), None);
+    }
+
+    #[test]
+    fn conffile_list_is_ordered_low_to_high_precedence() {
+        // System files precede user files; find_config lets the last match win,
+        // so user config overrides system config.
+        let list = conffile_list();
+        let sys = list
+            .iter()
+            .position(|p| p == &PathBuf::from("/etc/grc.conf"))
+            .unwrap();
+        // Every non-/etc entry that lives under a home/xdg dir comes after /etc.
+        assert!(list.len() >= 3);
+        assert_eq!(sys, 0);
     }
 }

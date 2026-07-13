@@ -517,6 +517,9 @@ fn main() {
                     if currcount == "block" {
                         blockflag = true;
                         blockcolour = cols[0].clone();
+                        // grcat marks the block-start as a stop so no later
+                        // pattern runs on this line and prevcount becomes "stop".
+                        currcount = "stop".to_string();
                         break;
                     } else if currcount == "unblock" {
                         blockflag = false;
@@ -751,5 +754,105 @@ mod tests {
     fn parse_config_rejects_bad_keyword() {
         let t = colour_table();
         assert!(parse_config("bogus=1\n", &t).is_err());
+    }
+
+    #[test]
+    fn parse_config_captures_command_skip_concat_replace() {
+        let t = colour_table();
+        let cfg = "regexp=(\\d+)\nreplace=N \\1\ncommand=true\nskip=yes\nconcat=/tmp/x\ncolours=red\n";
+        let pats = parse_config(cfg, &t).unwrap();
+        assert_eq!(pats.len(), 1);
+        let p = &pats[0];
+        assert_eq!(p.command.as_deref(), Some("true"));
+        assert_eq!(p.skip.as_deref(), Some("yes"));
+        assert_eq!(p.concat.as_deref(), Some("/tmp/x"));
+        // replace backrefs are rewritten to the ${N} form at parse time.
+        assert_eq!(p.replace.as_deref(), Some("N ${1}"));
+    }
+
+    #[test]
+    fn parse_config_multiple_blocks_split_on_separator() {
+        let t = colour_table();
+        // A line not starting with '#', a letter, or blank ends a block.
+        let cfg = "regexp=a\ncolours=red\n======\nregexp=b\ncolours=blue\ncount=stop\n";
+        let pats = parse_config(cfg, &t).unwrap();
+        assert_eq!(pats.len(), 2);
+        assert_eq!(pats[0].count, "more");
+        assert_eq!(pats[1].count, "stop");
+        assert_eq!(pats[1].colours.as_ref().unwrap(), &vec!["\x1b[34m".to_string()]);
+    }
+
+    #[test]
+    fn parse_config_count_defaults_to_more() {
+        let t = colour_table();
+        let pats = parse_config("regexp=z\ncolours=cyan\n", &t).unwrap();
+        assert_eq!(pats[0].count, "more");
+    }
+
+    #[test]
+    fn parse_config_blank_and_comment_lines_ignored_inside_block() {
+        let t = colour_table();
+        let cfg = "# comment\nregexp=q\n# mid comment\ncolours=green\n";
+        let pats = parse_config(cfg, &t).unwrap();
+        assert_eq!(pats.len(), 1);
+        assert_eq!(pats[0].colours.as_ref().unwrap(), &vec!["\x1b[32m".to_string()]);
+    }
+
+    #[test]
+    fn parse_config_missing_equals_is_error() {
+        let t = colour_table();
+        assert!(parse_config("regexp\n", &t).is_err());
+    }
+
+    #[test]
+    fn convert_backrefs_multi_digit_group() {
+        // Two-digit backrefs must consume both digits.
+        assert_eq!(convert_backrefs(r"\12"), "${12}");
+        assert_eq!(convert_backrefs(r"\1\2"), "${1}${2}");
+    }
+
+    #[test]
+    fn unescape_octal_stops_after_three_digits() {
+        // Python octal escapes are at most three digits: \0111 == \011 + '1'.
+        assert_eq!(unescape(r"\0111"), "\t1");
+        // \8 is not an octal digit, so the backslash is kept.
+        assert_eq!(unescape(r"\8"), "\\8");
+    }
+
+    #[test]
+    fn unescape_hex_caps_at_two_digits_and_bell() {
+        // A `\xNN` escape consumes at most two hex digits; trailing digits are
+        // literal. `\x41` == 'A', so `\x4142` == "A42".
+        assert_eq!(unescape(r"\x4142"), "A42");
+        // A non-hex char after the two digits is passed through unchanged.
+        assert_eq!(unescape(r"\x41Z"), "AZ");
+        // Bell escape via \a maps to BEL.
+        assert_eq!(unescape(r"\a"), "\x07");
+    }
+
+    #[test]
+    fn colour_table_has_bright_and_background_codes() {
+        let t = colour_table();
+        assert_eq!(t["bright_red"], "\x1b[31;91m");
+        assert_eq!(t["on_bright_white"], "\x1b[47;107m");
+        assert_eq!(t["none"], "");
+        assert_eq!(t["beep"], "\x07");
+    }
+
+    #[test]
+    fn get_colour_concatenation_via_parse_config() {
+        // A colour group with several tokens concatenates their escapes.
+        let t = colour_table();
+        let pats = parse_config("regexp=x\ncolours=on_blue bold white\n", &t).unwrap();
+        assert_eq!(
+            pats[0].colours.as_ref().unwrap(),
+            &vec!["\x1b[44m\x1b[1m\x1b[37m".to_string()]
+        );
+    }
+
+    #[test]
+    fn translate_regex_preserves_backslash_before_multibyte() {
+        // A backslash followed by a non-<> char (here multibyte) is untouched.
+        assert_eq!(translate_regex(r"\é"), r"\é");
     }
 }
