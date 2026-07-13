@@ -55,9 +55,16 @@ fn parse_opts(argv: &[String]) -> Opts {
             i += 1;
             break;
         } else if let Some(long) = tok.strip_prefix("--") {
-            let (name, inline_val) = match long.split_once('=') {
+            let (raw_name, inline_val) = match long.split_once('=') {
                 Some((n, v)) => (n, Some(v.to_string())),
                 None => (long, None),
+            };
+            // getopt accepts any unambiguous prefix of a long option
+            // (`--conf` → `--config`); ambiguous or unknown prefixes error out,
+            // which grc turns into a help() call.
+            let name = match resolve_long(raw_name) {
+                Some(n) => n,
+                None => help(),
             };
             match name {
                 "stdout" => o.stdoutf = true,
@@ -105,6 +112,24 @@ fn parse_opts(argv: &[String]) -> Opts {
     }
     o.args = argv[i..].to_vec();
     o
+}
+
+/// Resolve a long-option name the way `getopt` does: an exact match wins, else a
+/// unique prefix resolves to its option. Returns `None` for an unknown name or an
+/// ambiguous prefix (e.g. `--std`, which could be `--stdout` or `--stderr`).
+fn resolve_long(name: &str) -> Option<&'static str> {
+    const LONGOPTS: [&str; 5] = ["stdout", "stderr", "config", "colour", "pty"];
+    if let Some(exact) = LONGOPTS.into_iter().find(|o| *o == name) {
+        return Some(exact);
+    }
+    if name.is_empty() {
+        return None;
+    }
+    let mut it = LONGOPTS.into_iter().filter(|o| o.starts_with(name));
+    match (it.next(), it.next()) {
+        (Some(only), None) => Some(only),
+        _ => None,
+    }
 }
 
 /// Consume the next argument as an option value, advancing the index.
@@ -456,6 +481,31 @@ mod tests {
     fn translate_regex_matches_grcat_behaviour() {
         assert_eq!(translate_regex(r"^\>(.*)"), "^>(.*)");
         assert_eq!(translate_regex(r"\d+"), r"\d+");
+    }
+
+    #[test]
+    fn resolve_long_exact_unique_and_ambiguous() {
+        // Exact names resolve to themselves.
+        assert_eq!(resolve_long("config"), Some("config"));
+        // Unique prefixes resolve like getopt.
+        assert_eq!(resolve_long("conf"), Some("config"));
+        assert_eq!(resolve_long("col"), Some("colour"));
+        assert_eq!(resolve_long("pt"), Some("pty"));
+        // Ambiguous prefix (stdout/stderr) and unknown names do not resolve.
+        assert_eq!(resolve_long("std"), None);
+        assert_eq!(resolve_long("s"), None);
+        assert_eq!(resolve_long("zzz"), None);
+        assert_eq!(resolve_long(""), None);
+    }
+
+    #[test]
+    fn parse_opts_accepts_abbreviated_long_options() {
+        // `--conf=x` and `--col=off` mirror getopt's prefix matching.
+        assert_eq!(parse_opts(&s(&["--conf=conf.x", "cmd"])).cfile, "conf.x");
+        assert!(!parse_opts(&s(&["--col=off", "cmd"])).colour);
+        assert!(parse_opts(&s(&["--pt", "top"])).use_pty);
+        // Separate value after an abbreviated `--config`.
+        assert_eq!(parse_opts(&s(&["--conf", "conf.y", "cmd"])).cfile, "conf.y");
     }
 
     #[test]

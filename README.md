@@ -102,6 +102,8 @@ grc [options] command [args]
 | `--colour=WORD` | `on`, `off`, or `auto` (default: on when stdout is a tty). |
 | `--pty` | Run the command in a pseudo-terminal so it emits tty-style output (experimental). |
 
+Long options accept any unambiguous prefix, matching grc's `getopt` behaviour — `--conf=name` for `--config=name`, `--col=off` for `--colour=off`, `--pt` for `--pty`. Ambiguous prefixes like `--std` (either `--stdout` or `--stderr`) are rejected.
+
 #### EXAMPLES
 
 ```sh
@@ -210,7 +212,7 @@ The bundled `vendor/grc` submodule ships **83 colourfiles** (`conf.ant` … `con
 
 Pushes to `main` and pull requests run [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc -D warnings`, and a build + test on both `ubuntu-latest` and `macos-latest`, plus a binary smoke test. You can also run it manually from the repository **Actions** tab (**workflow dispatch**).
 
-The suite is **65 tests** — 15 launcher unit tests in `src/grcrs.rs` (option parsing, regexp translation, `grc.conf` matching and precedence), 24 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing, surrogateescape byte decoding), and 26 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output. End-to-end expectations were cross-checked byte-for-byte against the reference Python `grcat`.
+The suite is **68 tests** — 17 launcher unit tests in `src/grcrs.rs` (option parsing including getopt-style abbreviated long options, regexp translation, `grc.conf` matching and precedence), 24 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing, surrogateescape byte decoding), and 27 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output. End-to-end expectations were cross-checked byte-for-byte against the reference Python `grcat`.
 
 The two binaries build from `src/grcrs.rs` (`grc`, the launcher) and `src/grcatrs.rs` (`grcat`, the colouriser). The release profile uses LTO + `codegen-units = 1`.
 

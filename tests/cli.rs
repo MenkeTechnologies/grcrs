@@ -96,6 +96,15 @@ fn count_stop_halts_further_patterns() {
 }
 
 #[test]
+fn zero_width_whole_line_pattern_terminates() {
+    // `.*` under the default count=more matches the whole line, then matches
+    // empty at end-of-line. The reference Python grcat loops forever on this;
+    // grcrs advances past the zero-width match and colours the full line.
+    let out = grcat("regexp=.*\ncolours=red\n", "whole line\n");
+    assert_eq!(out, "\x1b[0m\x1b[31mwhole line\x1b[0m\n");
+}
+
+#[test]
 fn block_state_carries_across_lines() {
     let conf = "regexp=START\ncolours=italic black\ncount=block\n\
                 ======\nregexp=^END\ncolours=default\ncount=unblock\n";
