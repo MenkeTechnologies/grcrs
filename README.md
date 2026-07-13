@@ -55,7 +55,7 @@ grc ifconfig              # colourised interface dump
 grc make                  # colourised build log
 ```
 
-The port is faithful to grc 1.13 semantics: the same option surface, the same config-file search order, the same colourfile grammar (`regexp` / `colours` / `count` / `command` / `skip` / `replace` / `concat`), the same loop directives (`more`, `once`, `stop`, `block`, `unblock`, `previous`), and the same `block`/`prev`/`unchanged` streaming-colour behaviour carried across lines.
+The port is faithful to grc 1.13 semantics: the same option surface, the same config-file search order, the same colourfile grammar (`regexp` / `colours` / `count` / `command` / `skip` / `replace` / `concat`), the same loop directives (`more`, `once`, `stop`, `block`, `unblock`, `previous`), and the same `block`/`prev`/`unchanged` streaming-colour behaviour carried across lines. Undecodable input bytes round-trip unchanged, mirroring grcat's `surrogateescape` handling, so colourising never corrupts non-UTF-8 command output.
 
 ---
 
@@ -133,6 +133,23 @@ grc --pty top
 some-command | grcat conf.log
 ```
 
+#### MANUAL PAGES
+
+Section-1 man pages for both binaries live in [`man/`](man/): [`man/grc.1`](man/grc.1) and [`man/grcat.1`](man/grcat.1). Read them without installing:
+
+```sh
+man ./man/grc.1
+man ./man/grcat.1
+```
+
+Install them onto the `MANPATH`:
+
+```sh
+install -m 644 man/grc.1 man/grcat.1 "$(brew --prefix)/share/man/man1/"   # Homebrew
+# or, for a system prefix:
+sudo install -m 644 man/grc.1 man/grcat.1 /usr/local/share/man/man1/
+```
+
 ---
 
 ## [0x04] CONFIG SEARCH PATHS
@@ -193,7 +210,7 @@ The bundled `vendor/grc` submodule ships **83 colourfiles** (`conf.ant` … `con
 
 Pushes to `main` and pull requests run [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc -D warnings`, and a build + test on both `ubuntu-latest` and `macos-latest`, plus a binary smoke test. You can also run it manually from the repository **Actions** tab (**workflow dispatch**).
 
-The suite is **61 tests** — 15 launcher unit tests in `src/grcrs.rs` (option parsing, regexp translation, `grc.conf` matching and precedence), 22 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing), and 24 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output. End-to-end expectations were cross-checked byte-for-byte against the reference Python `grcat`.
+The suite is **65 tests** — 15 launcher unit tests in `src/grcrs.rs` (option parsing, regexp translation, `grc.conf` matching and precedence), 24 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing, surrogateescape byte decoding), and 26 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output. End-to-end expectations were cross-checked byte-for-byte against the reference Python `grcat`.
 
 The two binaries build from `src/grcrs.rs` (`grc`, the launcher) and `src/grcatrs.rs` (`grcat`, the colouriser). The release profile uses LTO + `codegen-units = 1`.
 

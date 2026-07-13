@@ -1,0 +1,107 @@
+.TH GRC 1 "2026-07-13" "grcrs" "Generic Colouriser 1.13"
+.SH NAME
+grc \- frontend for the generic colouriser
+.BR grcat "(1)"
+.SH SYNOPSIS
+.B grc
+.I [options] "command [args]"
+.SH DESCRIPTION
+.BR grc
+executes
+.I "command"
+with optional parameters
+.I "[args]"
+and pipes its stdout or stderr into
+.BR grcat
+with the matching configuration file, colourising the output. If no
+configuration matches, the command runs uncoloured.
+.PP
+This is a faithful Rust port of grc (Generic Colouriser 1.13). It ships two
+binaries \(em
+.BR grc ,
+the launcher documented here, and
+.BR grcat "(1),"
+the colouriser.
+.PP
+The grcat configuration file is chosen by scanning
+.I grc.conf
+files. The following are searched, lowest to highest precedence:
+.RS
+.nf
+/etc/grc.conf
+/usr/local/etc/grc.conf
+/opt/homebrew/etc/grc.conf
+$XDG_CONFIG_HOME/grc/grc.conf
+~/.grc/grc.conf
+.fi
+.RE
+.PP
+Format of
+.IR grc.conf :
+each entry consists of two lines; between entries there can be any number of
+empty lines or lines beginning with # (comments). The first line is a regular
+expression, the second the name of the
+.BR grcat
+configuration file. The configuration file named after the first regular
+expression that matches
+.I "command [args]"
+is passed to
+.BR grcat "."
+.SH OPTIONS
+.TP
+.B  \-e  \-\-stderr
+Redirect standard error through
+.BR grcat "."
+Unless
+.B \-s
+is also given, this cancels the automatic redirection of standard output.
+.TP
+.B  \-s  \-\-stdout
+Redirect standard output through
+.BR grcat ","
+even when
+.B \-e
+is selected. Used to colourise both streams together.
+.TP
+.B  \-c \fIname\fB  \-\-config=\fIname\fR
+Use
+.I name
+as the
+.BR grcat
+configuration file, bypassing the
+.I grc.conf
+scan.
+.TP
+.B  \-\-colour=\fIword\fR
+.I word
+is one of
+.IR on ,
+.IR off ,
+or
+.IR auto "."
+.B \-\-colour=on
+always colourises.
+.B \-\-colour=off
+runs
+.I command
+without colourising.
+.B \-\-colour=auto
+colourises only when standard output is a tty. When the option is absent the
+default is
+.IR auto "."
+.TP
+.B  \-\-pty
+Run
+.I command
+in a pseudoterminal so that programs which buffer differently or disable colour
+when not attached to a tty still produce tty-style output (experimental).
+.TP
+.B  \-\-
+Stop option scanning; the following argument is treated as the command even if
+it begins with a dash.
+.SH SEE ALSO
+.BR grcat "(1)"
+.PP
+Upstream grc: https://github.com/garabik/grc
+.PP
+grcrs: https://github.com/MenkeTechnologies/grcrs

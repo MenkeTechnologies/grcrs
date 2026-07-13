@@ -1,0 +1,134 @@
+.TH GRCAT 1 "2026-07-13" "grcrs" "Generic Colouriser 1.13"
+.SH NAME
+grcat \- read from standard input, colourise it, and write to standard output
+.SH SYNOPSIS
+.B grcat
+.I "configuration"
+.SH DESCRIPTION
+.I "configuration"
+is the name of a configuration file. The following directories are searched for
+it, in order:
+.RS
+.nf
+$XDG_DATA_HOME/grc/    (default ~/.local/share/grc/)
+$XDG_CONFIG_HOME/grc/  (default ~/.config/grc/)
+~/.grc/
+/usr/local/share/grc/
+/usr/share/grc/
+/opt/homebrew/share/grc/
+.fi
+.RE
+.PP
+The search path also includes the empty prefix, so an absolute or relative
+configuration file name is honoured as given. The first existing file wins.
+.PP
+.BR grcat
+reads standard input line by line, applies the colours described in the
+configuration file, and writes to standard output. Undecodable input bytes
+round-trip unchanged, so colourising never corrupts non-UTF-8 output.
+.PP
+A configuration file consists of entries, one per regexp, separated by lines
+whose first character is non-alphanumeric (except #). Lines beginning with # or
+empty lines are ignored. Each entry consists of several lines of the form
+.I keyword=value
+where keyword is one of:
+.BR regexp ,
+.BR colours ,
+.BR command ,
+.BR concat ,
+.BR skip ,
+.BR replace ,
+.BR count "."
+Only
+.BR regexp
+is mandatory, but it is of little use without at least a
+.BR colours
+or
+.BR command
+keyword.
+.TP
+.I regexp
+The regular expression to match.
+.TP
+.I colours
+A list of colours separated by commas (one colour per regexp group, or a single
+colour for the whole match). Recognised tokens include the standard colour and
+attribute names (
+.BR red ,
+.BR bold ,
+.BR on_blue ,
+.BR bright_cyan ,
+.BR italic ,
+.BR underline ,
+.BR previous ,
+.BR unchanged ,
+.BR none ,
+.BR default ")"
+or a quoted "..." literal unescaped like a Python string. Both
+.B colours
+and the US spelling
+.B colour
+/
+.B color
+are accepted.
+.TP
+.I command
+A command to be executed when the regexp matches. Its output is mixed with
+normal stdout; use a redirector ( >/dev/null ) to suppress it.
+.TP
+.I concat
+Concatenate the named stream so multi-line output can be colourised as a unit.
+.TP
+.I replace
+The regular expression match is replaced by the value. Preceding regular
+expressions are evaluated against the original text; following regular
+expressions are evaluated against the replaced text.
+.TP
+.I skip
+.BR yes
+or
+.BR no "."
+If yes, the matched line is skipped and not displayed. Default is no.
+.TP
+.I count
+One of
+.BR once ,
+.BR more ,
+.BR stop ,
+.BR block ,
+.BR unblock ,
+or
+.BR previous "."
+.RS
+.TP
+.BR once
+Colour only the first occurrence, then continue with other regexps.
+.TP
+.BR more
+Colour every occurrence in the line (the default).
+.TP
+.BR stop
+Colour the match, then move to the next line, ignoring later regexps.
+.TP
+.BR block
+Begin colouring subsequent lines with this block's colour until an
+.BR unblock "."
+.TP
+.BR unblock
+End the block started by
+.BR block "."
+.TP
+.BR previous
+Reuse the previous line's colour state for this match.
+.RE
+.PP
+Regular expressions are evaluated from top to bottom, allowing nested and
+overlapping expressions.
+.SH OPTIONS
+None.
+.SH SEE ALSO
+.BR grc "(1)"
+.PP
+Upstream grc: https://github.com/garabik/grc
+.PP
+grcrs: https://github.com/MenkeTechnologies/grcrs
