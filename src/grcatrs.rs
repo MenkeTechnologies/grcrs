@@ -636,3 +636,120 @@ fn main() {
     }
     let _ = writer.flush();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unescape_octal_is_python_eval() {
+        // grc configs write `"\033[38;5;208m"`; Python eval decodes the octal.
+        assert_eq!(unescape(r"\033[38;5;208m"), "\x1b[38;5;208m");
+        assert_eq!(unescape(r"\0"), "\0");
+    }
+
+    #[test]
+    fn unescape_hex_and_named_escapes() {
+        assert_eq!(unescape(r"\x1b[0m"), "\x1b[0m");
+        assert_eq!(unescape(r"\n\t\r"), "\n\t\r");
+        assert_eq!(unescape(r"a\\b"), "a\\b");
+        // an unknown escape keeps the backslash, like a raw byte pass-through
+        assert_eq!(unescape(r"\q"), "\\q");
+    }
+
+    #[test]
+    fn translate_regex_angle_brackets_become_literals() {
+        // Python `re` has no \< / \> boundary; they are literal characters.
+        assert_eq!(translate_regex(r"^\>(.*)"), "^>(.*)");
+        assert_eq!(translate_regex(r"\<none\>"), "<none>");
+        assert_eq!(
+            translate_regex(r"(\<?[Nn]one\>?|null)"),
+            "(<?[Nn]one>?|null)"
+        );
+        // Other escapes are left untouched.
+        assert_eq!(translate_regex(r"\d+\.\s(?=\sMar)"), r"\d+\.\s(?=\sMar)");
+    }
+
+    #[test]
+    fn convert_backrefs_to_dollar_form() {
+        assert_eq!(convert_backrefs(r"TIMEOUT \1"), "TIMEOUT ${1}");
+        assert_eq!(convert_backrefs(r"\1h\2m\3s"), "${1}h${2}m${3}s");
+        // A literal dollar must be doubled so it is not read as a group ref.
+        assert_eq!(convert_backrefs("cost $5"), "cost $$5");
+    }
+
+    #[test]
+    fn get_colour_named_quoted_and_invalid() {
+        let t = colour_table();
+        assert_eq!(get_colour("red", &t).unwrap(), "\x1b[31m");
+        assert_eq!(get_colour("bold", &t).unwrap(), "\x1b[1m");
+        assert_eq!(get_colour("previous", &t).unwrap(), "prev");
+        assert_eq!(get_colour("unchanged", &t).unwrap(), "unchanged");
+        assert_eq!(get_colour(r#""\033[1m""#, &t).unwrap(), "\x1b[1m");
+        assert!(get_colour("notacolour", &t).is_err());
+    }
+
+    #[test]
+    fn byte_to_char_handles_multibyte_and_clamps() {
+        let s = "aéb"; // 'é' is two bytes (0xC3 0xA9)
+        assert_eq!(byte_to_char(s, 0), 0);
+        assert_eq!(byte_to_char(s, 1), 1); // start of 'é'
+        assert_eq!(byte_to_char(s, 3), 2); // first byte after 'é'
+        assert_eq!(byte_to_char(s, 999), 3); // clamps to char count
+    }
+
+    #[test]
+    fn parse_config_resolves_colours_count_and_regex() {
+        let t = colour_table();
+        let pats = parse_config("regexp=foo\ncolours=red bold\n", &t).unwrap();
+        assert_eq!(pats.len(), 1);
+        assert_eq!(pats[0].count, "more");
+        // Multiple whitespace-separated colours in one group concatenate.
+        assert_eq!(
+            pats[0].colours.as_ref().unwrap(),
+            &vec!["\x1b[31m\x1b[1m".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_config_splits_comma_groups() {
+        let t = colour_table();
+        let pats = parse_config("regexp=(a)(b)\ncolours=red,green,blue\ncount=stop\n", &t).unwrap();
+        let cols = pats[0].colours.as_ref().unwrap();
+        assert_eq!(
+            cols,
+            &vec![
+                "\x1b[31m".to_string(),
+                "\x1b[32m".to_string(),
+                "\x1b[34m".to_string()
+            ]
+        );
+        assert_eq!(pats[0].count, "stop");
+    }
+
+    #[test]
+    fn parse_config_accepts_lookahead_and_us_spelling() {
+        // Lookahead is why grcrs uses fancy-regex; `color`/`colours` are aliases.
+        let t = colour_table();
+        let pats = parse_config("regexp=\\d+(?=\\sMar)\ncolor=green\n", &t).unwrap();
+        assert_eq!(pats.len(), 1);
+        assert_eq!(
+            pats[0].colours.as_ref().unwrap(),
+            &vec!["\x1b[32m".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_config_skips_blocks_without_regexp() {
+        let t = colour_table();
+        // A comment-only block contributes no pattern.
+        let pats = parse_config("# just a comment\ncolours=red\n", &t).unwrap();
+        assert!(pats.is_empty());
+    }
+
+    #[test]
+    fn parse_config_rejects_bad_keyword() {
+        let t = colour_table();
+        assert!(parse_config("bogus=1\n", &t).is_err());
+    }
+}

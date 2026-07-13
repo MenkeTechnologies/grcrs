@@ -378,3 +378,64 @@ fn strerror(e: &std::io::Error) -> String {
         None => e.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_opts_stops_at_command() {
+        let o = parse_opts(&s(&["-s", "ls", "-l"]));
+        assert!(o.stdoutf);
+        assert_eq!(o.args, s(&["ls", "-l"]));
+    }
+
+    #[test]
+    fn parse_opts_long_forms() {
+        let o = parse_opts(&s(&["--stderr", "--config=conf.foo", "cmd"]));
+        assert!(o.stderrf);
+        assert_eq!(o.cfile, "conf.foo");
+        assert_eq!(o.args, s(&["cmd"]));
+    }
+
+    #[test]
+    fn parse_opts_config_separate_and_attached() {
+        assert_eq!(parse_opts(&s(&["-c", "conf.x", "cmd"])).cfile, "conf.x");
+        assert_eq!(parse_opts(&s(&["-cconf.x", "cmd"])).cfile, "conf.x");
+        assert_eq!(
+            parse_opts(&s(&["--config", "conf.x", "cmd"])).cfile,
+            "conf.x"
+        );
+    }
+
+    #[test]
+    fn parse_opts_clustered_shorts_and_pty() {
+        let o = parse_opts(&s(&["-se", "--pty", "top"]));
+        assert!(o.stdoutf && o.stderrf && o.use_pty);
+        assert_eq!(o.args, s(&["top"]));
+    }
+
+    #[test]
+    fn parse_opts_double_dash_terminates_options() {
+        // Everything after `--` is the command, even if it looks like a flag.
+        let o = parse_opts(&s(&["--", "-s", "notaflag"]));
+        assert!(!o.stdoutf);
+        assert_eq!(o.args, s(&["-s", "notaflag"]));
+    }
+
+    #[test]
+    fn parse_opts_colour_flag() {
+        assert!(parse_opts(&s(&["--colour=on", "cmd"])).colour);
+        assert!(!parse_opts(&s(&["--colour=off", "cmd"])).colour);
+    }
+
+    #[test]
+    fn translate_regex_matches_grcat_behaviour() {
+        assert_eq!(translate_regex(r"^\>(.*)"), "^>(.*)");
+        assert_eq!(translate_regex(r"\d+"), r"\d+");
+    }
+}
