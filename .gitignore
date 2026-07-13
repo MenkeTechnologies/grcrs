@@ -1,0 +1,6 @@
+/target
+
+# Vendored grc source is required project content: always track it, even when a
+# user's global ignore (~/.gitignore_global) would exclude files by extension
+# (e.g. colourfiles conf.diff / conf.gcc / conf.log matched by *.diff, *.gc*, *.log).
+!vendor/grc/**
