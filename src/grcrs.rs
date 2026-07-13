@@ -158,7 +158,12 @@ fn scan_conf_for_cfile(text: &str, cmdline: &str) -> Option<String> {
         if let Ok(re) = Regex::new(&regexp) {
             if re.is_match(cmdline).unwrap_or(false) {
                 // The next line names the grcat config file.
-                return Some(lines.get(idx).map(|s| s.trim().to_string()).unwrap_or_default());
+                return Some(
+                    lines
+                        .get(idx)
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_default(),
+                );
             }
         }
     }
@@ -472,8 +477,14 @@ mod tests {
     #[test]
     fn scan_conf_returns_line_after_matching_regexp() {
         let conf = "# header\n^ls\nconf.ls\n^df\nconf.df\n";
-        assert_eq!(scan_conf_for_cfile(conf, "df -h").as_deref(), Some("conf.df"));
-        assert_eq!(scan_conf_for_cfile(conf, "ls -l").as_deref(), Some("conf.ls"));
+        assert_eq!(
+            scan_conf_for_cfile(conf, "df -h").as_deref(),
+            Some("conf.df")
+        );
+        assert_eq!(
+            scan_conf_for_cfile(conf, "ls -l").as_deref(),
+            Some("conf.ls")
+        );
     }
 
     #[test]

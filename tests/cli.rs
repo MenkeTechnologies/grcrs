@@ -44,6 +44,22 @@ fn grcat(conf: &str, input: &str) -> String {
     String::from_utf8(out.stdout).unwrap()
 }
 
+/// Like `grcat` but returns raw stdout bytes — for input that is not valid UTF-8.
+fn grcat_bytes(conf: &str, input: &[u8]) -> Vec<u8> {
+    let path = write_conf(conf);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grcat"))
+        .arg(&path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(input).unwrap();
+    let out = child.wait_with_output().unwrap();
+    std::fs::remove_file(&path).ok();
+    assert!(out.status.success(), "grcat exited with failure");
+    out.stdout
+}
+
 #[test]
 fn basic_colour_wraps_only_the_match() {
     let out = grcat("regexp=foo\ncolours=red\n", "a foo b\n");
@@ -235,8 +251,7 @@ fn crlf_only_strips_the_newline() {
 #[test]
 fn concat_appends_only_matching_lines_uncoloured() {
     let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let sink =
-        std::env::temp_dir().join(format!("grcrs_concat_{}_{}.txt", std::process::id(), n));
+    let sink = std::env::temp_dir().join(format!("grcrs_concat_{}_{}.txt", std::process::id(), n));
     std::fs::remove_file(&sink).ok();
     let conf = format!("regexp=keep\nconcat={}\ncolours=red\n", sink.display());
     grcat(&conf, "keep one\ndrop\nkeep two\n");
@@ -286,6 +301,24 @@ fn grc_stderr_redirect_colours_stderr() {
         String::from_utf8(out.stderr).unwrap(),
         "\x1b[0ma \x1b[0m\x1b[31mfoo\x1b[0m b\x1b[0m\n"
     );
+}
+
+#[test]
+fn invalid_utf8_bytes_round_trip_unchanged() {
+    // grcat's surrogateescape emits undecodable bytes verbatim; grcrs must not
+    // corrupt them into U+FFFD. Here the invalid bytes fall outside the match.
+    let out = grcat_bytes("regexp=none\ncolours=red\n", b"\xff\xfe none \xff\n");
+    let expected: &[u8] = b"\x1b[0m\xff\xfe \x1b[0m\x1b[31mnone\x1b[0m \xff\x1b[0m\n";
+    assert_eq!(out.as_slice(), expected);
+}
+
+#[test]
+fn invalid_utf8_byte_inside_coloured_span_round_trips() {
+    // `o.n` matches "o\xffn"; the invalid byte sits inside the red span and must
+    // still be emitted as the original 0xff, not the replacement character.
+    let out = grcat_bytes("regexp=o.n\ncolours=red\n", b"no\xffne\n");
+    let expected: &[u8] = b"\x1b[0mn\x1b[0m\x1b[31mo\xffn\x1b[0me\x1b[0m\n";
+    assert_eq!(out.as_slice(), expected);
 }
 
 #[test]

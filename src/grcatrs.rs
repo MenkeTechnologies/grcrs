@@ -373,6 +373,49 @@ fn byte_to_char(line: &str, b: usize) -> usize {
     line[..b].chars().count()
 }
 
+/// The UTF-8 bytes of a single `char`.
+fn ch_bytes(ch: char) -> Vec<u8> {
+    let mut b = [0u8; 4];
+    ch.encode_utf8(&mut b).as_bytes().to_vec()
+}
+
+/// Decode raw line bytes the way grcat's `surrogateescape` does, so invalid
+/// bytes survive round-trip. Returns a matching string with exactly one `char`
+/// per input unit — each undecodable byte becomes a single U+FFFD, matching
+/// Python's one-code-point-per-byte behaviour so char indices line up — plus the
+/// original source bytes for each char position, so output can re-emit invalid
+/// bytes unchanged instead of the lossy replacement character.
+fn decode_units(raw: &[u8]) -> (String, Vec<Vec<u8>>) {
+    let mut s = String::with_capacity(raw.len());
+    let mut orig: Vec<Vec<u8>> = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        match std::str::from_utf8(&raw[i..]) {
+            Ok(valid) => {
+                for ch in valid.chars() {
+                    s.push(ch);
+                    orig.push(ch_bytes(ch));
+                }
+                break;
+            }
+            Err(e) => {
+                let good = e.valid_up_to();
+                let valid = std::str::from_utf8(&raw[i..i + good])
+                    .expect("valid_up_to prefix is valid utf8");
+                for ch in valid.chars() {
+                    s.push(ch);
+                    orig.push(ch_bytes(ch));
+                }
+                // One invalid byte → one U+FFFD unit that round-trips to it.
+                s.push('\u{FFFD}');
+                orig.push(vec![raw[i + good]]);
+                i += good + 1;
+            }
+        }
+    }
+    (s, orig)
+}
+
 /// Capture group byte spans, `None` for non-participating groups.
 fn group_spans(caps: &Captures) -> Vec<Option<(usize, usize)>> {
     (0..caps.len())
@@ -473,12 +516,14 @@ fn main() {
             Ok(_) => {}
             Err(_) => break,
         }
-        // Decode leniently; command output is not guaranteed valid UTF-8.
-        let mut line = String::from_utf8_lossy(&raw).into_owned();
-        // Strip a single trailing newline character (mirrors grcat).
-        if line.ends_with('\n') || line.ends_with('\r') {
-            line.pop();
+        // Strip a single trailing newline byte (mirrors grcat's readline).
+        if matches!(raw.last(), Some(b'\n') | Some(b'\r')) {
+            raw.pop();
         }
+        // Decode leniently; command output is not guaranteed valid UTF-8. `orig`
+        // keeps each char's source bytes so invalid bytes round-trip unchanged.
+        let (mut line, orig) = decode_units(&raw);
+        let mut line_modified = false;
 
         // clist: (char_start, char_end, colour_string)
         let mut clist: Vec<(usize, usize, String)> = Vec::new();
@@ -511,6 +556,9 @@ fn main() {
                     }
                     line = pattern.regexp.replace_all(&line, rep.as_str()).into_owned();
                     was_replace = true;
+                    // After a rewrite, `orig` no longer aligns with `line`; fall
+                    // back to the decoded chars for output.
+                    line_modified = true;
                 }
 
                 if let Some(cols) = &pattern.colours {
@@ -620,19 +668,25 @@ fn main() {
         };
 
         if !skip {
-            let mut nline = String::new();
-            let mut clineprev = String::new();
+            let mut nline: Vec<u8> = Vec::new();
+            let mut clineprev: &str = "";
+            let mut tmp = [0u8; 4];
             for i in 0..n {
-                if cline[i] == clineprev {
-                    nline.push(chars[i]);
+                if cline[i].as_str() != clineprev {
+                    nline.extend_from_slice(cline[i].as_bytes());
+                    clineprev = cline[i].as_str();
+                }
+                // Emit the char's original bytes so invalid UTF-8 survives; after
+                // a `replace` rewrite, `orig` is stale so fall back to the char.
+                if line_modified {
+                    nline.extend_from_slice(chars[i].encode_utf8(&mut tmp).as_bytes());
                 } else {
-                    nline.push_str(&cline[i]);
-                    nline.push(chars[i]);
-                    clineprev = cline[i].clone();
+                    nline.extend_from_slice(&orig[i]);
                 }
             }
-            nline.push_str(&default);
-            if writeln!(writer, "{}", nline).is_err() {
+            nline.extend_from_slice(default.as_bytes());
+            nline.push(b'\n');
+            if writer.write_all(&nline).is_err() {
                 break; // EPIPE: downstream closed
             }
         }
@@ -759,7 +813,8 @@ mod tests {
     #[test]
     fn parse_config_captures_command_skip_concat_replace() {
         let t = colour_table();
-        let cfg = "regexp=(\\d+)\nreplace=N \\1\ncommand=true\nskip=yes\nconcat=/tmp/x\ncolours=red\n";
+        let cfg =
+            "regexp=(\\d+)\nreplace=N \\1\ncommand=true\nskip=yes\nconcat=/tmp/x\ncolours=red\n";
         let pats = parse_config(cfg, &t).unwrap();
         assert_eq!(pats.len(), 1);
         let p = &pats[0];
@@ -779,7 +834,10 @@ mod tests {
         assert_eq!(pats.len(), 2);
         assert_eq!(pats[0].count, "more");
         assert_eq!(pats[1].count, "stop");
-        assert_eq!(pats[1].colours.as_ref().unwrap(), &vec!["\x1b[34m".to_string()]);
+        assert_eq!(
+            pats[1].colours.as_ref().unwrap(),
+            &vec!["\x1b[34m".to_string()]
+        );
     }
 
     #[test]
@@ -795,7 +853,10 @@ mod tests {
         let cfg = "# comment\nregexp=q\n# mid comment\ncolours=green\n";
         let pats = parse_config(cfg, &t).unwrap();
         assert_eq!(pats.len(), 1);
-        assert_eq!(pats[0].colours.as_ref().unwrap(), &vec!["\x1b[32m".to_string()]);
+        assert_eq!(
+            pats[0].colours.as_ref().unwrap(),
+            &vec!["\x1b[32m".to_string()]
+        );
     }
 
     #[test]
@@ -848,6 +909,30 @@ mod tests {
             pats[0].colours.as_ref().unwrap(),
             &vec!["\x1b[44m\x1b[1m\x1b[37m".to_string()]
         );
+    }
+
+    #[test]
+    fn decode_units_maps_each_invalid_byte_to_one_roundtrip_unit() {
+        // Valid text decodes 1:1; each invalid byte becomes one U+FFFD unit whose
+        // original byte is preserved, matching Python's per-byte surrogateescape.
+        let (s, orig) = decode_units(b"a\xffb\xc3\xa9");
+        // chars: 'a', U+FFFD, 'b', 'é'  →  four units.
+        assert_eq!(s.chars().count(), 4);
+        assert_eq!(s, "a\u{FFFD}bé");
+        assert_eq!(orig.len(), 4);
+        assert_eq!(orig[0], b"a");
+        assert_eq!(orig[1], vec![0xff]); // the raw invalid byte, not U+FFFD's bytes
+        assert_eq!(orig[2], b"b");
+        assert_eq!(orig[3], vec![0xc3, 0xa9]); // 'é' keeps its two source bytes
+    }
+
+    #[test]
+    fn decode_units_splits_multibyte_invalid_run_per_byte() {
+        // Two consecutive invalid bytes yield two separate units (Python emits one
+        // surrogate per byte), so char indices stay aligned with the reference.
+        let (s, orig) = decode_units(b"\xff\xfe");
+        assert_eq!(s, "\u{FFFD}\u{FFFD}");
+        assert_eq!(orig, vec![vec![0xffu8], vec![0xfeu8]]);
     }
 
     #[test]
