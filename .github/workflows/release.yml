@@ -159,7 +159,7 @@ jobs:
             printf 'class Grcrs < Formula\n'
             printf '  desc "Generic Colouriser — a faithful Rust port of grc"\n'
             printf '  homepage "https://github.com/MenkeTechnologies/grcrs"\n'
-            printf '  license "GPL-2.0-or-later"\n'
+            printf '  license "MIT"\n'
             printf '  version "%s"\n\n' "$V"
             if [ -n "$mac_blocks" ]; then
               printf '  on_macos do\n%s\n  end\n\n' "$mac_blocks"

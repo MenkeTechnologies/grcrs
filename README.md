@@ -10,7 +10,7 @@
 [![CI](https://github.com/MenkeTechnologies/grcrs/actions/workflows/ci.yml/badge.svg)](https://github.com/MenkeTechnologies/grcrs/actions/workflows/ci.yml)
 [![Release](https://github.com/MenkeTechnologies/grcrs/actions/workflows/release.yml/badge.svg)](https://github.com/MenkeTechnologies/grcrs/actions/workflows/release.yml)
  [![Docs](https://img.shields.io/badge/docs-online-05d9e8.svg)](https://menketechnologies.github.io/grcrs/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ### `[GENERIC COLOURISER // ANSI STREAM PAINTER // REGEXP-DRIVEN // RUST CORE]`
 
@@ -238,10 +238,10 @@ The two binaries build from `src/grcrs.rs` (`grc`, the launcher) and `src/grcatr
 ## [0xFF] LICENSE
 
  ┌──────────────────────────────────────────────────────────┐
- │ GPL-2.0-or-later // SAME LICENSE AS UPSTREAM grc         │
+ │ MIT // ORIGINAL RUST IMPLEMENTATION                       │
  └──────────────────────────────────────────────────────────┘
 
-GPL-2.0-or-later — matching upstream [grc](https://github.com/garabik/grc).
+MIT — original Rust code. Ports grc's behaviour, not its source; see [`LICENSE`](LICENSE).
 
 ---
 
