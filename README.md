@@ -193,6 +193,8 @@ The bundled `vendor/grc` submodule ships **83 colourfiles** (`conf.ant` … `con
 
 Pushes to `main` and pull requests run [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc -D warnings`, and a build + test on both `ubuntu-latest` and `macos-latest`, plus a binary smoke test. You can also run it manually from the repository **Actions** tab (**workflow dispatch**).
 
+The suite is **31 tests** — 7 launcher unit tests in `src/grcrs.rs` (option parsing, regexp translation, `grc.conf` matching), 11 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing), and 13 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output.
+
 The two binaries build from `src/grcrs.rs` (`grc`, the launcher) and `src/grcatrs.rs` (`grcat`, the colouriser). The release profile uses LTO + `codegen-units = 1`.
 
 ---
