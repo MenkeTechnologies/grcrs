@@ -26,6 +26,43 @@ struct Pattern {
     /// Replacement string, converted from `\N` backrefs to `${N}`.
     replace: Option<String>,
     concat: Option<String>,
+    /// grcrs extension: streaming delta-driven colour for a numeric group.
+    trend: Option<TrendSpec>,
+    /// Capture group whose text keys the per-key last-value map (grcrs extension).
+    key: Option<usize>,
+    /// Capture group whose text is parsed as the tracked metric (grcrs extension).
+    metric: Option<usize>,
+}
+
+/// Resolved colours for the three motions of a `trend=` directive. An empty
+/// string means "no colour for this motion" (the group falls back to default).
+struct TrendSpec {
+    rising: String,
+    falling: String,
+    steady: String,
+}
+
+/// Choose the colour for `value` under a `trend=` directive, updating the
+/// per-key last-value map. The first observation of a key has no prior value
+/// and so counts as `steady`; a repeated equal value is also `steady`.
+fn trend_colour(
+    spec: &TrendSpec,
+    last: &mut HashMap<String, f64>,
+    key: String,
+    value: f64,
+) -> String {
+    let out = match last.get(&key).copied() {
+        Some(prev) if value > prev => spec.rising.clone(),
+        Some(prev) if value < prev => spec.falling.clone(),
+        _ => spec.steady.clone(),
+    };
+    last.insert(key, value);
+    out
+}
+
+/// Byte-span text of capture group `idx`, or `None` if it did not participate.
+fn group_text<'a>(line: &'a str, groups: &[Option<(usize, usize)>], idx: usize) -> Option<&'a str> {
+    groups.get(idx).and_then(|s| *s).map(|(a, b)| &line[a..b])
 }
 
 /// Static ANSI colour/attribute table, mirroring grcat's `colours` dict.
@@ -221,8 +258,9 @@ fn parse_config(
     text: &str,
     table: &HashMap<&'static str, &'static str>,
 ) -> Result<Vec<Pattern>, String> {
-    const KEYWORDS: [&str; 7] = [
-        "regexp", "colours", "count", "command", "skip", "replace", "concat",
+    const KEYWORDS: [&str; 10] = [
+        "regexp", "colours", "count", "command", "skip", "replace", "concat", "trend", "key",
+        "metric",
     ];
     let mut patterns = Vec::new();
     let mut lines = text.lines();
@@ -285,6 +323,51 @@ fn parse_config(
         if let Some(re_src) = block.get("regexp") {
             let regexp = Regex::new(&translate_regex(re_src))
                 .map_err(|e| format!("bad regexp {:?}: {}", re_src, e))?;
+
+            // grcrs extension: parse the streaming-trend directives.
+            let trend = match block.get("trend") {
+                Some(tv) => {
+                    let mut spec = TrendSpec {
+                        rising: String::new(),
+                        falling: String::new(),
+                        steady: String::new(),
+                    };
+                    for pair in tv.split(',') {
+                        let (dir, colspec) = pair.split_once(':').ok_or_else(|| {
+                            format!("bad trend spec, expected dir:colour: {:?}", pair)
+                        })?;
+                        let mut c = String::new();
+                        for tok in colspec.split_whitespace() {
+                            c.push_str(&get_colour(tok, table)?);
+                        }
+                        match dir.trim() {
+                            "rising" => spec.rising = c,
+                            "falling" => spec.falling = c,
+                            "steady" => spec.steady = c,
+                            other => return Err(format!("unknown trend direction: {}", other)),
+                        }
+                    }
+                    Some(spec)
+                }
+                None => None,
+            };
+            let key = match block.get("key") {
+                Some(kv) => Some(
+                    kv.trim()
+                        .parse::<usize>()
+                        .map_err(|_| format!("bad key group: {}", kv))?,
+                ),
+                None => None,
+            };
+            let metric = match block.get("metric") {
+                Some(mv) => Some(
+                    mv.trim()
+                        .parse::<usize>()
+                        .map_err(|_| format!("bad metric group: {}", mv))?,
+                ),
+                None => None,
+            };
+
             patterns.push(Pattern {
                 regexp,
                 colours,
@@ -296,6 +379,9 @@ fn parse_config(
                 skip: block.get("skip").cloned(),
                 replace: block.get("replace").map(|r| convert_backrefs(r)),
                 concat: block.get("concat").cloned(),
+                trend,
+                key,
+                metric,
             });
         }
     }
@@ -507,6 +593,8 @@ fn main() {
     let mut prevcount = "more".to_string();
     let mut blockflag = false;
     let mut blockcolour = default.clone();
+    // grcrs extension: last-seen metric value per (pattern, key) for `trend=`.
+    let mut trend_last: HashMap<String, f64> = HashMap::new();
 
     let mut raw: Vec<u8> = Vec::new();
     loop {
@@ -529,7 +617,7 @@ fn main() {
         let mut clist: Vec<(usize, usize, String)> = Vec::new();
         let mut skip = false;
 
-        for pattern in &patterns {
+        for (pattern_idx, pattern) in patterns.iter().enumerate() {
             let mut pos = 0usize;
             let mut currcount = pattern.count.clone();
             let mut was_replace = false;
@@ -574,7 +662,29 @@ fn main() {
                         blockcolour = default.clone();
                         currcount = "stop".to_string();
                     }
-                    add2list(&mut clist, &groups, cols, &line);
+                    // grcrs extension: when a `trend=` directive is present,
+                    // recolour the metric group by the sign of value - last[key].
+                    if let (Some(spec), Some(mi)) = (&pattern.trend, pattern.metric) {
+                        let mut ec = cols.clone();
+                        let key = pattern
+                            .key
+                            .and_then(|k| group_text(&line, &groups, k))
+                            .unwrap_or("")
+                            .to_string();
+                        if let Some(v) = group_text(&line, &groups, mi)
+                            .and_then(|t| t.trim().parse::<f64>().ok())
+                        {
+                            let composite = format!("{}\u{0}{}", pattern_idx, key);
+                            let tc = trend_colour(spec, &mut trend_last, composite, v);
+                            if mi >= ec.len() {
+                                ec.resize(mi + 1, cols[0].clone());
+                            }
+                            ec[mi] = tc;
+                        }
+                        add2list(&mut clist, &groups, &ec, &line);
+                    } else {
+                        add2list(&mut clist, &groups, cols, &line);
+                    }
                     if currcount == "previous" {
                         currcount = prevcount.clone();
                     }
@@ -939,5 +1049,51 @@ mod tests {
     fn translate_regex_preserves_backslash_before_multibyte() {
         // A backslash followed by a non-<> char (here multibyte) is untouched.
         assert_eq!(translate_regex(r"\é"), r"\é");
+    }
+
+    #[test]
+    fn trend_colour_picks_by_delta_sign() {
+        // rising→A, falling→B, steady (equal, and first observation)→dim.
+        let spec = TrendSpec {
+            rising: "A".to_string(),
+            falling: "B".to_string(),
+            steady: "D".to_string(),
+        };
+        let mut last = HashMap::new();
+        assert_eq!(trend_colour(&spec, &mut last, "k".to_string(), 10.0), "D"); // first: steady
+        assert_eq!(trend_colour(&spec, &mut last, "k".to_string(), 12.0), "A"); // rising
+        assert_eq!(trend_colour(&spec, &mut last, "k".to_string(), 4.0), "B"); // falling
+        assert_eq!(trend_colour(&spec, &mut last, "k".to_string(), 4.0), "D"); // equal: steady
+    }
+
+    #[test]
+    fn trend_colour_is_isolated_per_key() {
+        let spec = TrendSpec {
+            rising: "A".to_string(),
+            falling: "B".to_string(),
+            steady: "D".to_string(),
+        };
+        let mut last = HashMap::new();
+        assert_eq!(trend_colour(&spec, &mut last, "a".to_string(), 100.0), "D");
+        assert_eq!(trend_colour(&spec, &mut last, "b".to_string(), 1.0), "D");
+        // key "b" rises independently of key "a"'s much larger last value.
+        assert_eq!(trend_colour(&spec, &mut last, "b".to_string(), 2.0), "A");
+        // key "a" falls independently of key "b".
+        assert_eq!(trend_colour(&spec, &mut last, "a".to_string(), 50.0), "B");
+    }
+
+    #[test]
+    fn parse_config_trend_key_metric() {
+        let t = colour_table();
+        let cfg = "regexp=(\\w+)\\s+(\\d+)\ncolours=default,default\ntrend=rising:green,falling:red,steady:dark\nkey=1\nmetric=2\n";
+        let pats = parse_config(cfg, &t).unwrap();
+        assert_eq!(pats.len(), 1);
+        let p = &pats[0];
+        assert_eq!(p.key, Some(1));
+        assert_eq!(p.metric, Some(2));
+        let spec = p.trend.as_ref().unwrap();
+        assert_eq!(spec.rising, "\x1b[32m");
+        assert_eq!(spec.falling, "\x1b[31m");
+        assert_eq!(spec.steady, "\x1b[2m");
     }
 }

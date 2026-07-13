@@ -55,7 +55,7 @@ grc ifconfig              # colourised interface dump
 grc make                  # colourised build log
 ```
 
-The port is faithful to grc 1.13 semantics: the same option surface, the same config-file search order, the same colourfile grammar (`regexp` / `colours` / `count` / `command` / `skip` / `replace` / `concat`), the same loop directives (`more`, `once`, `stop`, `block`, `unblock`, `previous`), and the same `block`/`prev`/`unchanged` streaming-colour behaviour carried across lines. Undecodable input bytes round-trip unchanged, mirroring grcat's `surrogateescape` handling, so colourising never corrupts non-UTF-8 command output.
+The port is faithful to grc 1.13 semantics: the same option surface, the same config-file search order, the same colourfile grammar (`regexp` / `colours` / `count` / `command` / `skip` / `replace` / `concat`, plus the grcrs `trend` / `key` / `metric` extension), the same loop directives (`more`, `once`, `stop`, `block`, `unblock`, `previous`), and the same `block`/`prev`/`unchanged` streaming-colour behaviour carried across lines. Undecodable input bytes round-trip unchanged, mirroring grcat's `surrogateescape` handling, so colourising never corrupts non-UTF-8 command output.
 
 ---
 
@@ -201,6 +201,23 @@ A colourfile is a sequence of blocks. A block is a run of `keyword=value` lines;
 | `skip` | `yes`/`1`/`true` suppresses the line from output. |
 | `replace` | Replacement string; Python `\N` backrefs become `${N}`. |
 | `concat` | Append the matched line to a file. |
+| `trend` | grcrs extension. Comma-separated `direction:colour` pairs (`rising`, `falling`, `steady`) that recolour a numeric group by its motion across the stream. |
+| `key` | grcrs extension. Capture group whose text keys the per-key last-value map for `trend`. |
+| `metric` | grcrs extension. Capture group whose text is parsed as the tracked number for `trend`. |
+
+### Streaming trend colour (grcrs extension)
+
+`trend=` colours a numeric capture group by the sign of `value - last[key]` rather than by which regexp matched, so the colour encodes the value's motion over the stream (a counter climbing, RTT rising, free memory falling). grcat keeps a per-key last-seen value; each line, the `metric` group is coloured `rising`, `falling`, or `steady` depending on how it compares to the previous value seen for the same `key`. The first observation of a key, and any repeated equal value, count as `steady`. A group that fails to parse as a number falls back to its `colours` entry. `trend` is not present in upstream grc 1.13; colourfiles without it are unaffected.
+
+```
+regexp=(\w+)\s+(\d+)
+colours=default,default
+trend=rising:green,falling:red,steady:dark
+key=1
+metric=2
+```
+
+Here group 1 (the name) keys the map and group 2 (the number) is recoloured by its trend under that key, so each name's series climbs and falls independently.
 
 Colour tokens resolve through a static ANSI table — `red`, `bold`, `on_blue`, `bright_cyan`, `italic`, `underline`, `previous`, `unchanged`, `none`, `default` — or a `"..."` quoted literal that is unescaped like a Python string (octal `\033`, hex `\xNN`, and the common single-char escapes). Bright colours are emitted with a standard-code prefix for graceful fallback on terminals without aixterm codes.
 
@@ -212,7 +229,7 @@ The bundled `vendor/grc` submodule ships **83 colourfiles** (`conf.ant` … `con
 
 Pushes to `main` and pull requests run [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc -D warnings`, and a build + test on both `ubuntu-latest` and `macos-latest`, plus a binary smoke test. You can also run it manually from the repository **Actions** tab (**workflow dispatch**).
 
-The suite is **68 tests** — 17 launcher unit tests in `src/grcrs.rs` (option parsing including getopt-style abbreviated long options, regexp translation, `grc.conf` matching and precedence), 24 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing, surrogateescape byte decoding), and 27 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output. End-to-end expectations were cross-checked byte-for-byte against the reference Python `grcat`.
+The suite is **71 tests** — 17 launcher unit tests in `src/grcrs.rs` (option parsing including getopt-style abbreviated long options, regexp translation, `grc.conf` matching and precedence), 27 colouriser unit tests in `src/grcatrs.rs` (colour table, string unescape, backref conversion, config-block parsing, streaming-trend colour, surrogateescape byte decoding), and 27 end-to-end tests in `tests/cli.rs` that spawn the built binaries and assert on the coloured output. End-to-end expectations were cross-checked byte-for-byte against the reference Python `grcat`.
 
 The two binaries build from `src/grcrs.rs` (`grc`, the launcher) and `src/grcatrs.rs` (`grcat`, the colouriser). The release profile uses LTO + `codegen-units = 1`.
 

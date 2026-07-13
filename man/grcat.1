@@ -38,7 +38,10 @@ where keyword is one of:
 .BR concat ,
 .BR skip ,
 .BR replace ,
-.BR count "."
+.BR count ,
+.BR trend ,
+.BR key ,
+.BR metric "."
 Only
 .BR regexp
 is mandatory, but it is of little use without at least a
@@ -121,6 +124,35 @@ End the block started by
 .BR previous
 Reuse the previous line's colour state for this match.
 .RE
+.TP
+.I trend
+grcrs extension. A comma-separated list of
+.I direction:colour
+pairs, where direction is
+.BR rising ,
+.BR falling ,
+or
+.BR steady "."
+The capture group named by
+.I metric
+is coloured by the sign of its value minus the last value seen for the same
+.I key
+across the input stream, so the colour tracks the number's motion (rising,
+falling, or steady) rather than which regexp matched. The first value for a key,
+and any repeated equal value, count as
+.BR steady ";"
+a group that does not parse as a number keeps its
+.B colours
+entry. Not present in upstream grc.
+.TP
+.I key
+grcrs extension. The capture group whose text keys the per-key last-value map
+used by
+.BR trend "."
+.TP
+.I metric
+grcrs extension. The capture group whose text is parsed as the number tracked by
+.BR trend "."
 .PP
 Regular expressions are evaluated from top to bottom, allowing nested and
 overlapping expressions.

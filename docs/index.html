@@ -101,6 +101,21 @@
     }
     .oneliner .comment { color: var(--text-muted); }
 
+    .ext-tag {
+      display: inline-block;
+      margin-left: 0.4em;
+      padding: 0.05em 0.45em;
+      font-size: 0.62em;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      vertical-align: middle;
+      border: 1px solid var(--accent, currentColor);
+      border-radius: 0.35em;
+      color: var(--accent, currentColor);
+      opacity: 0.85;
+    }
+
     .cat-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
@@ -274,7 +289,24 @@ grc -c conf.log tail -f /var/log/system.log</pre>
           <div class="cat-card"><h4>skip</h4><p><code>yes</code> / <code>1</code> / <code>true</code> suppresses the matched line from output entirely.</p></div>
           <div class="cat-card"><h4>replace</h4><p>Replacement string applied to the line. Python <code>\N</code> backrefs are converted to <code>${N}</code>; literal <code>$</code> is escaped.</p></div>
           <div class="cat-card"><h4>concat</h4><p>Append the matched line to a file (create-and-append).</p></div>
+          <div class="cat-card"><h4>trend <span class="ext-tag">grcrs</span></h4><p>Comma-separated <code>direction:colour</code> pairs (<code>rising</code>, <code>falling</code>, <code>steady</code>) that recolour a numeric group by the sign of its change across the stream. Not in upstream grc.</p></div>
+          <div class="cat-card"><h4>key <span class="ext-tag">grcrs</span></h4><p>Capture group whose text keys the per-key last-value map used by <code>trend</code>.</p></div>
+          <div class="cat-card"><h4>metric <span class="ext-tag">grcrs</span></h4><p>Capture group whose text is parsed as the number tracked by <code>trend</code>.</p></div>
         </div>
+      </section>
+
+      <hr class="section-rule">
+
+      <section class="tutorial-section">
+        <h2>Streaming trend colour <span class="ext-tag">grcrs extension</span></h2>
+        <p>The <code>trend</code> keyword colours a numeric capture group by the sign of <code>value − last[key]</code> rather than by which regexp matched, so the colour encodes the value's motion over the stream — a counter climbing, an RTT rising, free memory falling. <code>grcat</code> keeps a per-key last-seen value; each line, the <code>metric</code> group is coloured <code>rising</code>, <code>falling</code>, or <code>steady</code> depending on how it compares to the previous value for the same <code>key</code>. The first observation of a key, and any repeated equal value, count as <code>steady</code>; a group that does not parse as a number keeps its <code>colours</code> entry. This is not part of upstream grc 1.13 — colourfiles without <code>trend</code> are unaffected.</p>
+<pre><span class="comment"># colour each name's number green when it rises, red when it falls</span>
+regexp=(\w+)\s+(\d+)
+colours=default,default
+trend=rising:green,falling:red,steady:dark
+key=1
+metric=2</pre>
+        <p>Group 1 (the name) keys the map and group 2 (the number) is recoloured by its trend under that key, so each name's series climbs and falls independently.</p>
       </section>
 
       <hr class="section-rule">
