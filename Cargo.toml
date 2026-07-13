@@ -7,6 +7,22 @@ license = "GPL-2.0-or-later"
 repository = "https://github.com/MenkeTechnologies/grcrs"
 readme = "README.md"
 
+exclude = [
+    "/tests/",
+    "/.github/",
+    "/test_data/",
+    "/test_corpus/",
+    "**/*parity*",
+    "/docs/",
+    "/scripts/",
+    "/bench/",
+    "/vendor/",
+    "/completions/",
+    "/zshrs_dump.*",
+    "/examples/"
+]
+
+
 [[bin]]
 name = "grc"
 path = "src/grcrs.rs"
