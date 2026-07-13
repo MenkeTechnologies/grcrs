@@ -476,9 +476,7 @@ fn main() {
         // Decode leniently; command output is not guaranteed valid UTF-8.
         let mut line = String::from_utf8_lossy(&raw).into_owned();
         // Strip a single trailing newline character (mirrors grcat).
-        if line.ends_with('\n') {
-            line.pop();
-        } else if line.ends_with('\r') {
+        if line.ends_with('\n') || line.ends_with('\r') {
             line.pop();
         }
 
@@ -507,11 +505,10 @@ fn main() {
                 let groups = group_spans(&caps);
                 let mend = groups[0].unwrap().1;
 
-                if pattern.replace.is_some() {
+                if let Some(rep) = pattern.replace.as_ref() {
                     if was_replace {
                         break;
                     }
-                    let rep = pattern.replace.as_ref().unwrap();
                     line = pattern.regexp.replace_all(&line, rep.as_str()).into_owned();
                     was_replace = true;
                 }
