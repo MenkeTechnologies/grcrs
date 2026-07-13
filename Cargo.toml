@@ -15,16 +15,10 @@ categories = ["command-line-utilities"]
 exclude = [
     "/tests/",
     "/.github/",
-    "/test_data/",
-    "/test_corpus/",
     "**/*parity*",
     "/docs/",
-    "/scripts/",
-    "/bench/",
     "/vendor/",
-    "/completions/",
-    "/zshrs_dump.*",
-    "/examples/"
+    "/zshrs_dump.*"
 ]
 
 
