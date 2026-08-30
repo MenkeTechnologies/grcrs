@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "grcrs"
-version = "1.13.1"
+version = "1.13.2"
 dependencies = [
  "fancy-regex",
  "libc",
