@@ -1,6 +1,6 @@
 [package]
 name = "grcrs"
-version = "1.13.4"
+version = "1.13.5"
 edition = "2021"
 description = "Generic Colouriser — a faithful Rust port of grc"
 repository = "https://github.com/MenkeTechnologies/grcrs"
