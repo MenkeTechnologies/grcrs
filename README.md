@@ -62,7 +62,7 @@ The port is faithful to grc 1.13 semantics: the same option surface, the same co
 ## [0x01] SYSTEM REQUIREMENTS
 
 - Rust toolchain // `rustc` + `cargo`
-- A `grc.conf` + colourfiles on one of the search paths (bundled in the `vendor/grc` submodule, installed by the Homebrew formula)
+- A `grc.conf` + colourfiles on one of the search paths (bundled in the vendored `vendor/grc` directory, installed by the Homebrew formula)
 
 ## [0x02] INSTALLATION
 
@@ -77,12 +77,12 @@ The formula installs the two binaries plus `grc.conf` (to `$(brew --prefix)/etc`
 #### COMPILING FROM SOURCE
 
 ```sh
-git clone --recurse-submodules https://github.com/MenkeTechnologies/grcrs
+git clone https://github.com/MenkeTechnologies/grcrs
 cd grcrs
 cargo build --release
 ```
 
-The runtime config lives in the `vendor/grc` submodule (`grc.conf` and `colourfiles/conf.*`). Install `grc.conf` to one of `/etc`, `/usr/local/etc`, `/opt/homebrew/etc`, `$XDG_CONFIG_HOME/grc`, or `~/.grc`, and the colourfiles to a matching `share/grc` search directory.
+The runtime config lives in the vendored `vendor/grc` directory (`grc.conf` and `colourfiles/conf.*`). Install `grc.conf` to one of `/etc`, `/usr/local/etc`, `/opt/homebrew/etc`, `$XDG_CONFIG_HOME/grc`, or `~/.grc`, and the colourfiles to a matching `share/grc` search directory.
 
 ---
 
@@ -221,7 +221,7 @@ Here group 1 (the name) keys the map and group 2 (the number) is recoloured by i
 
 Colour tokens resolve through a static ANSI table — `red`, `bold`, `on_blue`, `bright_cyan`, `italic`, `underline`, `previous`, `unchanged`, `none`, `default` — or a `"..."` quoted literal that is unescaped like a Python string (octal `\033`, hex `\xNN`, and the common single-char escapes). Bright colours are emitted with a standard-code prefix for graceful fallback on terminals without aixterm codes.
 
-The bundled `vendor/grc` submodule ships **83 colourfiles** (`conf.ant` … `conf.yaml`) and a `grc.conf` mapping commands to them.
+The bundled `vendor/grc` directory ships **83 colourfiles** (`conf.ant` … `conf.yaml`) and a `grc.conf` mapping commands to them.
 
 ---
 
