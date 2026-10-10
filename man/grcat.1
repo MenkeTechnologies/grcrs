@@ -25,10 +25,12 @@ configuration file name is honoured as given. The first existing file wins.
 .BR grcat
 reads standard input line by line, applies the colours described in the
 configuration file, and writes to standard output. Undecodable input bytes
-round-trip unchanged, so colourising never corrupts non-UTF-8 output.
+round-trip unchanged unless a
+.B replace
+rewrote the line.
 .PP
 A configuration file consists of entries, one per regexp, separated by lines
-whose first character is non-alphanumeric (except #). Lines beginning with # or
+whose first character is not an ASCII letter. Lines beginning with # or
 empty lines are ignored. Each entry consists of several lines of the form
 .I keyword=value
 where keyword is one of:
@@ -69,9 +71,10 @@ attribute names (
 .BR default ")"
 or a quoted "..." literal unescaped like a Python string. Both
 .B colours
-and the US spelling
-.B colour
-/
+and the aliases
+.BR colors ,
+.BR colour ,
+and
 .B color
 are accepted.
 .TP
@@ -80,7 +83,7 @@ A command to be executed when the regexp matches. Its output is mixed with
 normal stdout; use a redirector ( >/dev/null ) to suppress it.
 .TP
 .I concat
-Concatenate the named stream so multi-line output can be colourised as a unit.
+Append the matched line to the file named by the value, creating it if needed.
 .TP
 .I replace
 The regular expression match is replaced by the value. Preceding regular
@@ -122,7 +125,7 @@ End the block started by
 .BR block "."
 .TP
 .BR previous
-Reuse the previous line's colour state for this match.
+Use the count value of the previous match.
 .RE
 .TP
 .I trend
